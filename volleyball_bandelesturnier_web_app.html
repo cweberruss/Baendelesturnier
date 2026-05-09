@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bändelesturnier Tool</title>
+<style>
+  body { font-family: Arial; margin: 10px; background:#f5f7fb; }
+  h2 { margin-top: 0; }
+  .hidden { display: none; }
+  button { margin: 4px; padding: 14px 18px; font-size: 18px; border-radius: 10px; border:none; }
+  .active { background-color: #4CAF50; color: white; }
+  .blocked { background:#e53935 !important; color:white; }
+  .primary { background:#1976d2; color:white; }
+  .secondary { background:#9e9e9e; color:white; }
+  .danger { background:#e53935; color:white; }
+
+  .field { border: 2px solid #ccc; padding: 14px; margin: 14px 0; border-radius: 14px; background:white; }
+  .team { margin: 10px 0; font-size: 18px; }
+  .teamA { background:#e3f2fd; padding:10px; border-radius:10px; }
+  .teamB { background:#fce4ec; padding:10px; border-radius:10px; }
+
+  .big { font-size: 22px; }
+  .grid { display: flex; flex-wrap: wrap; }
+  .grid button { width: 70px; height: 70px; transform: rotate(180deg); font-weight:bold; }
+
+  .playerBox {
+    display:inline-block;
+    min-width:32px;
+    padding:6px 10px;
+    margin:4px;
+    border-radius:8px;
+    background:#263238;
+    color:white;
+    font-weight:bold;
+    text-align:center;
+  }
+
+  .beamerField { margin:10px 0; padding:10px; border-radius:12px; }
+  .beamerTeams { display:flex; gap:10px; }
+  .beamerTeamA, .beamerTeamB { flex:1; padding:10px; border-radius:10px; }
+  .beamerTeamA { background:#0d47a1; color:white; }
+  .beamerTeamB { background:#880e4f; color:white; }
+  .beamerBox { min-width:22px; padding:4px 6px; margin:3px; font-size:18px; border-radius:6px; background:rgba(0,0,0,0.3); display:inline-block; }
+
+  .ranking { background:white; padding:12px; border-radius:12px; margin-bottom:12px; }
+
+</style>
+</head>
+<body>
+
+<div id="adminView">
+  <h2>Admin</h2>
+  <label>Teilnehmerzahl: <input type="number" id="totalPlayers" value="20"></label><br><br>
+  <label>Mindestspieler pro Feld (gesamt): <input type="number" id="minPerField" value="8"></label><br><br>
+  <button class="primary" onclick="goToParticipants()">Teilnehmer auswählen</button>
+  <button class="primary" onclick="showScores()">Punkte</button>
+</div>
+
+<div id="participantsView" class="hidden">
+  <h2>Teilnehmer</h2>
+  <button class="primary" onclick="selectAllPlayers()">Alle auswählen</button>
+  <div id="playerButtons" class="grid"></div>
+  <br>
+  <button class="primary" onclick="generateTeams()">Aufteilung</button>
+  <button class="secondary" onclick="showAdmin()">Admin</button>
+</div>
+
+<div id="teamsView" class="hidden">
+  <div style="background:white;padding:12px;border-radius:12px;margin-bottom:12px;text-align:center;">
+    <div id="timerDisplay" style="font-size:48px;font-weight:bold;">10:00</div>
+    <button class="primary" onclick="startTimer()">Start</button>
+    <button class="secondary" onclick="pauseTimer()">Pause</button>
+    <button class="danger" onclick="resetTimer()">Reset</button>
+  </div>
+  <h2>Aufteilung</h2>
+  <div id="fields"></div>
+  <button class="secondary" onclick="backToParticipants()">Zurück</button>
+  <button class="danger" onclick="nextRound()">Nächste Runde</button>
+  <button class="primary" onclick="openBeamer()">Beamer-Anzeige</button>
+</div>
+
+<div id="scoresView" class="hidden">
+  <h2>Punkte</h2>
+  <div id="scoreList"></div>
+  <button class="danger" onclick="resetScores()">Punkte zurücksetzen</button>
+  <button class="secondary" onclick="showAdmin()">Zurück</button>
+</div>
+
+<script>
+let players = [];
+let activePlayers = new Set();
+let scores = JSON.parse(localStorage.getItem('scores')||"{}");
+let rounds = JSON.parse(localStorage.getItem('rounds')||"{}");
+let lastTeams = [];
+let timer;
+let timeLeft = 600;
+let timerRunning = false;
+
+function updateTimerDisplay(){
+  const m=Math.floor(timeLeft/60);
+  const s=timeLeft%60;
+  const el=document.getElementById('timerDisplay');
+  if(!el)return;
+  el.innerText=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+  if(timeLeft<=60){el.style.background='#c62828';el.style.color='white';}
+  else{el.style.background='white';el.style.color='black';}
+}
+
+function startTimer(){
+  if(timerRunning)return;
+  timerRunning=true;
+  timer=setInterval(()=>{
+    if(timeLeft>0){timeLeft--;updateTimerDisplay();updateBeamer();}
+    else{clearInterval(timer);timerRunning=false;alert('Runde beendet!');}
+  },1000);
+}
+
+function pauseTimer(){clearInterval(timer);timerRunning=false;}
+
+function resetTimer(){clearInterval(timer);timerRunning=false;timeLeft=600;updateTimerDisplay();updateBeamer();}
+
+updateTimerDisplay();
+
+function save(){
+  localStorage.setItem('scores',JSON.stringify(scores));
+  localStorage.setItem('rounds',JSON.stringify(rounds));
+  localStorage.setItem('lastTeams',JSON.stringify(lastTeams));
+}
+
+function showAdmin(){hideAll();document.getElementById('adminView').classList.remove('hidden');}
+
+function goToParticipants(){
+  hideAll();document.getElementById('participantsView').classList.remove('hidden');
+  const total=parseInt(document.getElementById('totalPlayers').value);
+  const container=document.getElementById('playerButtons');
+  container.innerHTML='';
+
+  players=[];
+  for(let i=1;i<=total;i++){
+    players.push(i);
+    if(!(i in scores))scores[i]=0;
+    if(!(i in rounds))rounds[i]=0;
+
+    const btn=document.createElement('button');
+    btn.innerText=i;
+    btn.onclick=()=>togglePlayer(i,btn);
+    container.appendChild(btn);
+  }
+}
+
+function selectAllPlayers(){
+  const total=parseInt(document.getElementById('totalPlayers').value);
+  const buttons=document.querySelectorAll('#playerButtons button');
+  activePlayers.clear();
+
+  buttons.forEach((btn,idx)=>{
+    const id=idx+1;
+    if(id<=total && activePlayers.size<36){
+      activePlayers.add(id);
+      btn.classList.add('active');
+    }
+  });
+}
+
+function togglePlayer(id,btn){
+  if(activePlayers.has(id)){
+    activePlayers.delete(id);
+    btn.classList.remove('active');
+    return;
+  }
+
+  if(activePlayers.size>=36){
+    btn.classList.add('blocked');
+    setTimeout(()=>btn.classList.remove('blocked'),500);
+    return;
+  }
+
+  activePlayers.add(id);
+  btn.classList.add('active');
+}
+
+function playerBoxes(team){return team.map(p=>`<span class='playerBox'>${p}</span>`).join('');}
+
+function generateTeams(){
+  let selected=[...activePlayers];
+  if(selected.length<8)return alert("Zu wenige Spieler");
+
+  shuffle(selected);
+
+  const min=parseInt(document.getElementById('minPerField').value);
+  let maxFields=3;
+
+  let fieldCount=0;
+  for(let f=maxFields;f>=1;f--){
+    if(selected.length>=f*min){fieldCount=f;break;}
+  }
+  if(fieldCount===0)fieldCount=1;
+
+  let teams=Array.from({length:fieldCount*2},()=>[]);
+  selected.forEach((p,i)=>teams[i%(fieldCount*2)].push(p));
+
+  lastTeams=teams;
+  save();
+
+  hideAll();document.getElementById('teamsView').classList.remove('hidden');
+
+  const container=document.getElementById('fields');
+  container.innerHTML='';
+
+  for(let f=0;f<fieldCount;f++){
+    let A=teams[f*2],B=teams[f*2+1];
+    A.forEach(p=>rounds[p]++);
+    B.forEach(p=>rounds[p]++);
+
+    container.innerHTML+=`
+      <div class='field'>
+        <div class='big'>Feld ${f+1}</div>
+        <div class='team teamA'>Team A<br>${playerBoxes(A)}<br><button onclick='win(${JSON.stringify(A)})'>Sieger</button></div>
+        <div class='team teamB'>Team B<br>${playerBoxes(B)}<br><button onclick='win(${JSON.stringify(B)})'>Sieger</button></div>
+      </div>`;
+  }
+
+  save();updateBeamer();
+}
+
+function win(team){team.forEach(p=>scores[p]++);save();}
+
+function resetScores(){if(!confirm("Wirklich alles zurücksetzen?"))return;scores={};rounds={};save();showScores();}
+
+function showScores(){hideAll();document.getElementById('scoresView').classList.remove('hidden');
+  let list=Object.keys(scores).map(p=>({p,score:scores[p],r:rounds[p]})).sort((a,b)=>b.score-a.score);
+  document.getElementById('scoreList').innerHTML=list.map(x=>`Spieler ${x.p}: ${x.score} (${x.r})`).join('<br>');
+}
+
+function nextRound(){if(confirm("Bist du sicher?")){activePlayers.clear();goToParticipants();}}
+function backToParticipants(){hideAll();document.getElementById('participantsView').classList.remove('hidden');}
+function openBeamer(){updateBeamer();window.open(location.href+'#beamer','_blank');}
+function updateBeamer() {
+  localStorage.setItem('beamerData',JSON.stringify(lastTeams));
+  localStorage.setItem('beamerTimer', timeLeft);
+}
+
+if(location.hash==="#beamer"){
+  document.body.innerHTML=`
+    <h1 style='text-align:center'>Live Anzeige</h1>
+    <div id='beamerTimerDisplay' style='font-size:80px;font-weight:bold;text-align:center;margin-bottom:10px;padding:10px;border-radius:12px;background:white;'>10:00</div>
+    <div id='live'></div>`;
+
+  setInterval(()=>{
+    let data=JSON.parse(localStorage.getItem('beamerData')||"[]");
+    let t=parseInt(localStorage.getItem('beamerTimer')||"600");
+
+    let m=Math.floor(t/60);
+    let s=t%60;
+    const el=document.getElementById('beamerTimerDisplay');
+    if(el){
+      el.innerText=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      if(t<=60){el.style.background='#c62828';el.style.color='white';}
+      else{el.style.background='white';el.style.color='black';}
+    }
+
+    let html='';
+    for(let i=0;i<data.length;i+=2){
+      html+=`<div class='beamerField'>
+        <div>Feld ${(i/2)+1}</div>
+        <div class='beamerTeams'>
+          <div class='beamerTeamA'>A<br>${(data[i]||[]).map(p=>`<span class='beamerBox'>${p}</span>`).join('')}</div>
+          <div class='beamerTeamB'>B<br>${(data[i+1]||[]).map(p=>`<span class='beamerBox'>${p}</span>`).join('')}</div>
+        </div>
+      </div>`;
+    }
+
+    document.getElementById('live').innerHTML=html;
+  },1000);
+}
+
+function hideAll(){['adminView','participantsView','teamsView','scoresView'].forEach(id=>document.getElementById(id)?.classList.add('hidden'))}
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+</script>
+</body>
+</html>
