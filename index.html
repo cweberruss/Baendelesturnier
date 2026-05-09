@@ -217,15 +217,24 @@ function generateTeams(){
     container.innerHTML+=`
       <div class='field'>
         <div class='big'>Feld ${f+1}</div>
-        <div class='team teamA'>Team A<br>${playerBoxes(A)}<br><button onclick='win(${JSON.stringify(A)})'>Sieger</button></div>
-        <div class='team teamB'>Team B<br>${playerBoxes(B)}<br><button onclick='win(${JSON.stringify(B)})'>Sieger</button></div>
+        <div class='team teamA'>Team A<br>${playerBoxes(A)}<br><button onclick='win(${JSON.stringify(A)}, this)'>Sieger</button></div>
+        <div class='team teamB'>Team B<br>${playerBoxes(B)}<br><button onclick='win(${JSON.stringify(B)}, this)'>Sieger</button></div>
       </div>`;
   }
 
   save();updateBeamer();
 }
 
-function win(team){team.forEach(p=>scores[p]++);save();}
+function win(team, button){
+  team.forEach(p=>scores[p]++);
+  save();
+  
+  const originalText = button.innerText;
+  button.innerText = '✓ Gespeichert';
+  setTimeout(() => {
+    button.innerText = originalText;
+  }, 1500);
+}
 
 function resetScores(){if(!confirm("Wirklich alles zurücksetzen?"))return;scores={};rounds={};save();showScores();}
 
