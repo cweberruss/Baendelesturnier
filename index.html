@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bändelesturnier</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1976d2">
+
+<style>
+body { font-family: Arial; margin: 10px; background:#f5f7fb; }
+.hidden { display:none; }
+button { margin:4px; padding:14px 18px; font-size:18px; border-radius:10px; border:none; }
+.primary { background:#1976d2; color:white; }
+.grid { display:flex; flex-wrap:wrap; }
+.grid button { width:70px; height:70px; }
+.field { background:white; padding:12px; margin:10px 0; border-radius:12px; }
+.beamerTeams { display:flex; gap:10px; }
+.beamerTeamA { flex:1; background:#0d47a1; color:white; padding:10px; border-radius:10px; }
+.beamerTeamB { flex:1; background:#880e4f; color:white; padding:10px; border-radius:10px; }
+</style>
+</head>
+<body>
+
+<h2>Bändelesturnier</h2>
+
+<button class="primary" onclick="goToParticipants()">Teilnehmer</button>
+
+<div id="participantsView" class="hidden">
+  <h2>Teilnehmer</h2>
+  <div id="playerButtons" class="grid"></div>
+  <button class="primary" onclick="generateTeams()">Aufteilung</button>
+</div>
+
+<div id="teamsView" class="hidden">
+  <h2>Teams</h2>
+  <div id="fields"></div>
+</div>
+
+<script>
+let active = new Set();
+let lastTeams = [];
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./service-worker.js');
+}
+
+function goToParticipants() {
+  document.getElementById('participantsView').classList.remove('hidden');
+
+  const c = document.getElementById('playerButtons');
+  c.innerHTML = '';
+
+  for (let i = 1; i <= 20; i++) {
+    let b = document.createElement('button');
+    b.innerText = i;
+    b.onclick = () => toggle(i, b);
+    c.appendChild(b);
+  }
+}
+
+function toggle(i, b) {
+  if (active.has(i)) {
+    active.delete(i);
+    b.classList.remove('active');
+  } else {
+    active.add(i);
+    b.classList.add('active');
+  }
+}
+
+function generateTeams() {
+  let arr = [...active];
+  for (let i = arr.length - 1; i > 0; i--) {
+    let j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+
+  let teams = [[], [], [], []];
+  arr.forEach((p, i) => teams[i % 4].push(p));
+
+  lastTeams = teams;
+  renderTeams();
+}
+
+function renderTeams() {
+  document.getElementById('teamsView').classList.remove('hidden');
+
+  let c = document.getElementById('fields');
+  c.innerHTML = '';
+
+  for (let i = 0; i < lastTeams.length; i += 2) {
+    c.innerHTML += `
+      <div class='field'>
+        <div>Feld ${i/2 + 1}</div>
+        <div class='beamerTeams'>
+          <div class='beamerTeamA'>${(lastTeams[i] || []).join(' ')}</div>
+          <div class='beamerTeamB'>${(lastTeams[i+1] || []).join(' ')}</div>
+        </div>
+      </div>`;
+  }
+}
+</script>
+
+</body>
+</html>
